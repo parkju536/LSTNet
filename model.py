@@ -83,9 +83,10 @@ class LSTNet(object):
                                initializer=tf.zeros_initializer(),
                                name="attention_bias")
         projection = tf.nn.tanh(query + key + bias)
-        # [b, t, t]
+        # [b, t, t, 1] -> [b, t, t]
         sim_matrix = tf.layers.dense(projection, 1,
                                      activation=None)
+        sim_matrix = tf.squeeze(sim_matrix, axis=-1)
         # mask for future blinding
         ones = tf.ones_like(sim_matrix)
         # get lower triangular matrix
