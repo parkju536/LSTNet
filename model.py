@@ -20,12 +20,14 @@ class LSTNet(object):
         contexts = self.temporal_attention(gru_outputs)
         linear_inputs = tf.concat([contexts, gru_outputs], axis=2)
         # prediction and loss
-        self.predictions = tf.layers.dense(linear_inputs, self.config.nfeatures,
-                                           activation=None, use_bias=True,
-                                           kernel_regularizer=self.regularizer,
-                                           kernel_initializer=layers.xavier_initializer())
-        self.loss = tf.losses.mean_squared_error(labels=self.targets, predictions=self.predictions)
-        error = tf.reduce_sum((self.targets - self.predictions) ** 2) ** 0.5
+        predictions = tf.layers.dense(linear_inputs, self.config.nfeatures,
+                                      activation=None, use_bias=True,
+                                      kernel_regularizer=self.regularizer,
+                                      kernel_initializer=layers.xavier_initializer())
+        # get the last prediction
+        self.prediction = predictions[:, -1, :]
+        self.loss = tf.losses.mean_squared_error(labels=self.targets, predictions=self.prediction)
+        error = tf.reduce_sum((self.targets - self.prediction) ** 2) ** 0.5
         denom = tf.reduce_sum((self.targets - tf.reduce_mean(self.targets)) ** 2) ** 0.5
         self.rse = error / denom
         if self.config.l2_lambda > 0:
@@ -90,15 +92,11 @@ class LSTNet(object):
         # mask for future blinding
         ones = tf.ones_like(sim_matrix)
         # get lower triangular matrix
-        tril = tf.matrix_band_part(ones, -1, 0)
-        # for assigning -inf score to self-alignment
-        identity = tf.identity(ones)
-        mask = tril - identity
+        mask = tf.matrix_band_part(ones, -1, 0)
         paddings = tf.ones_like(mask) * (-2 ** 32)
         sim_matrix = tf.where(tf.equal(mask, 0), paddings, sim_matrix)
         sim_matrix = tf.nn.softmax(sim_matrix)
         contexts = tf.matmul(sim_matrix, inputs)
-
         return contexts
 
     def add_train_op(self):
