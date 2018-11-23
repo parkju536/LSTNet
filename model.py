@@ -101,9 +101,15 @@ class LSTNet(object):
 
     def auto_regressive(self, inputs):
         # y_t,d = sum_i (w_i * y_i,d) + b_d
-        w = tf.get_variable(shape=[self.config.nsteps, self.config.nfeatures], name="w")
+        w = tf.get_variable(shape=[self.config.nsteps, self.config.nfeatures],
+                            initializer=layers.xavier_initializer(),
+                            name="w")
+        bias = tf.get_variable(shape=[self.config.nfeatures],
+                               initializer=tf.zeros_initializer(),
+                               name="bias")
         w_ = tf.expand_dims(w, axis=0)
-        weighted = tf.reduce_sum(inputs * w_, axis=1)
+        weighted = tf.reduce_sum(inputs * w_, axis=1) + bias
+
         return weighted
 
     def add_train_op(self):
