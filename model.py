@@ -16,18 +16,20 @@ class LSTNet(object):
     def _build_model(self):
         self.add_placeholder()
         conv = self.conv1d(self.input_x, self.config.kernel_sizes, self.config.num_filters)
-        gru_outputs = self.gru(conv)
-        contexts = self.temporal_attention(gru_outputs)
-        linear_inputs = tf.concat([contexts, gru_outputs], axis=2)
+        gru_outputs = self.gru(conv)  # [b, t, d]
+        context = self.temporal_attention(gru_outputs)  # [b, d]
+        last_hidden_states = gru_outputs[:, -1, :]  # [b, d]
+        linear_inputs = tf.concat([context, last_hidden_states], axis=1)
         # prediction and loss
         predictions = tf.layers.dense(linear_inputs, self.config.nfeatures,
                                       activation=None, use_bias=True,
                                       kernel_regularizer=self.regularizer,
                                       kernel_initializer=layers.xavier_initializer())
-        # get the last prediction
-        self.prediction = predictions[:, -1, :]
-        self.loss = tf.losses.mean_squared_error(labels=self.targets, predictions=self.prediction)
-        error = tf.reduce_sum((self.targets - self.prediction) ** 2) ** 0.5
+        # get auto-regression and add it to prediction from NN
+        ar = self.auto_regressive(self.input_x)
+        self.predictions = predictions + ar
+        self.loss = tf.losses.mean_squared_error(labels=self.targets, predictions=self.predictions)
+        error = tf.reduce_sum((self.targets - self.predictions) ** 2) ** 0.5
         denom = tf.reduce_sum((self.targets - tf.reduce_mean(self.targets)) ** 2) ** 0.5
         self.rse = error / denom
         if self.config.l2_lambda > 0:
@@ -38,7 +40,8 @@ class LSTNet(object):
         self.initialize_session()
 
     def add_placeholder(self):
-        self.input_x = tf.placeholder(shape=[None, None, self.config.nfeatures], dtype=tf.float32, name="x")
+        self.input_x = tf.placeholder(shape=[None, self.config.nsteps, self.config.nfeatures], dtype=tf.float32,
+                                      name="x")
         self.targets = tf.placeholder(shape=[None, self.config.nfeatures], dtype=tf.float32, name="targets")
         self.dropout = tf.placeholder(dtype=tf.float32, name="dropout")
 
@@ -63,14 +66,16 @@ class LSTNet(object):
     def gru(self, inputs):
         cell = tf.nn.rnn_cell.GRUCell(inputs, activation=tf.nn.relu)
         outputs, states = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
-        outputs = tf.nn.dropout(outputs, self.dropout)
+        outputs = tf.nn.dropout(states, self.dropout)
         return outputs
 
     def temporal_attention(self, inputs):
         # use MLP to compute attention score
         # given h_t, attend h_1, h_2,.. h_t-1
-        query = tf.expand_dims(inputs, axis=2)  # [b,t,d] -> [b,t,1,d]
-        key = tf.expand_dims(inputs, axis=1)  # [b,t,d] -> [b,1,t,d]
+        # get last hidden states of GRU
+        query = tf.transpose(inputs, [1, 0, 2])[-1]  # [b,t,d] -> [b,d]
+        query = tf.expand_dims(query, axis=1)  # [b, d] -> [b, 1, d]
+        key = inputs  # [b,t,d]
         query = tf.layers.dense(query, self.config.attention_size,
                                 activation=None, use_bias=False,
                                 kernel_initializer=layers.xavier_initializer(),
@@ -85,19 +90,21 @@ class LSTNet(object):
                                initializer=tf.zeros_initializer(),
                                name="attention_bias")
         projection = tf.nn.tanh(query + key + bias)
-        # [b, t, t, 1] -> [b, t, t]
+        # [b, t, 1]
         sim_matrix = tf.layers.dense(projection, 1,
                                      activation=None)
-        sim_matrix = tf.squeeze(sim_matrix, axis=-1)
-        # mask for future blinding
-        ones = tf.ones_like(sim_matrix)
-        # get lower triangular matrix
-        mask = tf.matrix_band_part(ones, -1, 0)
-        paddings = tf.ones_like(mask) * (-2 ** 32)
-        sim_matrix = tf.where(tf.equal(mask, 0), paddings, sim_matrix)
-        sim_matrix = tf.nn.softmax(sim_matrix)
-        contexts = tf.matmul(sim_matrix, inputs)
-        return contexts
+        sim_matrix = tf.nn.softmax(sim_matrix, 1)
+        # [b, 1, t] dot [b, t, d] -> [b, 1, d]
+        context = tf.matmul(tf.transpose(sim_matrix, [0, 2, 1]), inputs)
+        context = tf.squeeze(context, axis=-1)
+        return context
+
+    def auto_regressive(self, inputs):
+        # y_t,d = sum_i (w_i * y_i,d) + b_d
+        w = tf.get_variable(shape=[self.config.nsteps, self.config.nfeatures], name="w")
+        w_ = tf.expand_dims(w, axis=0)
+        weighted = tf.reduce_sum(inputs * w_, axis=1)
+        return weighted
 
     def add_train_op(self):
         opt = tf.train.AdamOptimizer(self.config.lr)

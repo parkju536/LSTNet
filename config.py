@@ -5,3 +5,4 @@ class Config(object):
         self.num_filters = 128
         self.kernel_sizes = [3, 4, 5]
         self.clip = 5
+        self.nsteps = 8
