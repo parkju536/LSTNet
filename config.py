@@ -6,3 +6,5 @@ class Config(object):
         self.kernel_sizes = [3, 4, 5]
         self.clip = 5
         self.nsteps = 8
+        self.l2_lambda = 1e-3
+        self.ar_lambda = 1e-1

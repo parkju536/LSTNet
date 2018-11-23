@@ -22,13 +22,14 @@ class LSTNet(object):
         linear_inputs = tf.concat([context, last_hidden_states], axis=1)
         # prediction and loss
         predictions = tf.layers.dense(linear_inputs, self.config.nfeatures,
-                                      activation=None, use_bias=True,
+                                      activation=tf.nn.tanh, use_bias=True,
                                       kernel_regularizer=self.regularizer,
                                       kernel_initializer=layers.xavier_initializer())
         # get auto-regression and add it to prediction from NN
-        ar = self.auto_regressive(self.input_x)
+        ar, l2_loss = self.auto_regressive(self.input_x, self.config.ar_lambda)
         self.predictions = predictions + ar
         self.loss = tf.losses.mean_squared_error(labels=self.targets, predictions=self.predictions)
+        self.loss += l2_loss
         error = tf.reduce_sum((self.targets - self.predictions) ** 2) ** 0.5
         denom = tf.reduce_sum((self.targets - tf.reduce_mean(self.targets)) ** 2) ** 0.5
         self.rse = error / denom
@@ -99,7 +100,7 @@ class LSTNet(object):
         context = tf.squeeze(context, axis=-1)
         return context
 
-    def auto_regressive(self, inputs):
+    def auto_regressive(self, inputs, ar_lambda):
         # y_t,d = sum_i (w_i * y_i,d) + b_d
         w = tf.get_variable(shape=[self.config.nsteps, self.config.nfeatures],
                             initializer=layers.xavier_initializer(),
@@ -109,8 +110,8 @@ class LSTNet(object):
                                name="bias")
         w_ = tf.expand_dims(w, axis=0)
         weighted = tf.reduce_sum(inputs * w_, axis=1) + bias
-
-        return weighted
+        l2_loss = ar_lambda * tf.reduce_sum(tf.square(w))
+        return weighted, l2_loss
 
     def add_train_op(self):
         opt = tf.train.AdamOptimizer(self.config.lr)
