@@ -15,11 +15,29 @@ class LSTNet(object):
 
     def _build_model(self):
         self.add_placeholder()
-        conv = self.conv1d(self.input_x, self.config.kernel_sizes, self.config.num_filters)
-        gru_outputs = self.gru(conv)  # [b, t, d]
-        context = self.temporal_attention(gru_outputs)  # [b, d]
-        last_hidden_states = gru_outputs[:, -1, :]  # [b, d]
-        linear_inputs = tf.concat([context, last_hidden_states], axis=1)
+        # make memories
+        with tf.variable_scope("memories"):
+            memories = tf.concat(tf.split(self.memories, self.config.msteps, axis=1))
+            conv_memories = self.conv1d(memories, self.config.kernel_sizes,
+                                        self.config.num_filters,
+                                        scope="long_term")
+            gru_memories = self.gru(conv_memories, scope="long_gru")
+            context_memories = self.temporal_attention(gru_memories)
+            linear_memories = tf.concat([context_memories, gru_memories[:, -1, :]], axis=1)
+            # [b, m, d]
+            linear_memories = tf.reshape(linear_memories, [[-1, self.config.msteps, self.config.num_filters * 2]])
+
+        # short term memory
+        with tf.variable_scope("short_term"):
+            conv = self.conv1d(self.input_x, self.config.kernel_sizes,
+                               self.config.num_filters,
+                               scope="short_term")
+            gru_outputs = self.gru(conv, scope="short_gru")  # [b, t, d]
+            context = self.temporal_attention(gru_outputs)  # [b, d]
+            last_hidden_states = gru_outputs[:, -1, :]  # [b, d]
+            linear_inputs = tf.concat([context, last_hidden_states], axis=1)
+        weighted_values = self.get_memory_values(linear_inputs, linear_memories)
+        linear_inputs = tf.concat([linear_inputs, weighted_values], axis=1)
         # prediction and loss
         predictions = tf.layers.dense(linear_inputs, self.config.nfeatures,
                                       activation=tf.nn.tanh, use_bias=True,
@@ -43,31 +61,36 @@ class LSTNet(object):
     def add_placeholder(self):
         self.input_x = tf.placeholder(shape=[None, self.config.nsteps, self.config.nfeatures], dtype=tf.float32,
                                       name="x")
+        self.memories = tf.placeholder(shape=[None, self.config.nsteps * self.config.msteps,
+                                              self.config.nfeatures], dtype=tf.float32,
+                                       name="memories")
         self.targets = tf.placeholder(shape=[None, self.config.nfeatures], dtype=tf.float32, name="targets")
         self.dropout = tf.placeholder(dtype=tf.float32, name="dropout")
 
-    def conv1d(self, inputs, kernel_sizes, num_filters):
+    def conv1d(self, inputs, kernel_sizes, num_filters, scope, reuse=False):
         # inputs : [b, t, d]
-        conv_lst = []
-        for i in range(len(kernel_sizes)):
-            kernel_size = kernel_sizes[i]
-            conv = tf.layers.conv1d(inputs, num_filters, kernel_size,
-                                    use_bias=True,
-                                    kernel_regularizer=self.regularizer,
-                                    name="filter_{}".format(i),
-                                    padding="same",
-                                    kernel_initializer=layers.variance_scaling_initializer(), )
-            conv = tf.nn.relu(conv)
-            conv_lst.append(conv)
-        # outputs : [b, t, num_filters * len(kernel_sizes)]
-        outputs = tf.concat(conv_lst, axis=2)
-        outputs = tf.nn.dropout(outputs, self.dropout)
+        with tf.variable_scope(scope, reuse=reuse):
+            conv_lst = []
+            for i in range(len(kernel_sizes)):
+                kernel_size = kernel_sizes[i]
+                conv = tf.layers.conv1d(inputs, num_filters, kernel_size,
+                                        use_bias=True,
+                                        kernel_regularizer=self.regularizer,
+                                        name="filter_{}".format(i),
+                                        padding="same",
+                                        kernel_initializer=layers.variance_scaling_initializer(), )
+                conv = tf.nn.relu(conv)
+                conv_lst.append(conv)
+            # outputs : [b, t, num_filters * len(kernel_sizes)]
+            outputs = tf.concat(conv_lst, axis=2)
+            outputs = tf.nn.dropout(outputs, self.dropout)
         return outputs
 
-    def gru(self, inputs):
-        cell = tf.nn.rnn_cell.GRUCell(inputs, activation=tf.nn.relu)
-        outputs, states = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
-        outputs = tf.nn.dropout(states, self.dropout)
+    def gru(self, inputs, scope, reuse=False):
+        with tf.variable_scope(scope, reuse=reuse):
+            cell = tf.nn.rnn_cell.GRUCell(self.config.num_filters, activation=tf.nn.relu)
+            outputs, states = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
+            outputs = tf.nn.dropout(states, self.dropout)
         return outputs
 
     def temporal_attention(self, inputs):
@@ -112,6 +135,17 @@ class LSTNet(object):
         weighted = tf.reduce_sum(inputs * w_, axis=1) + bias
         l2_loss = ar_lambda * tf.reduce_sum(tf.square(w))
         return weighted, l2_loss
+
+    def get_memory_values(self, query, memories):
+        # query : [b, d]
+        # memories : [b, m, d]
+        query = tf.expand_dims(query, axis=1)
+        # dot product [b, 1, d] dot [b, m, d] -> [b,1,m]
+        weight = tf.matmul(query, tf.transpose(memories, [0, 2, 1]))
+        weight = tf.nn.softmax(weight)
+        weighted_values = tf.matmul(weight, memories)
+
+        return weighted_values
 
     def add_train_op(self):
         opt = tf.train.AdamOptimizer(self.config.lr)
