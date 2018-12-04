@@ -1,7 +1,6 @@
 import tensorflow as tf
 from tensorflow.contrib import layers
 import os
-from data_utils import batch_loader
 
 
 class LSTNet(object):
@@ -178,19 +177,3 @@ class LSTNet(object):
         """
         print("Reloading the latest trained model...")
         self.saver.restore(self.sess, dir_model)
-
-    def train(self, train_batches):
-        batches = batch_loader(train_batches, self.config.batch_size)
-        for i in range(self.config.num_epochs):
-            epoch = i + 1
-            for batch in batches:
-                input_x, targets = zip(*batch)
-                feed_dict = {
-                    self.input_x: input_x,
-                    self.targets: targets,
-                    self.dropout: self.config.dropout
-                }
-                output_feed = [self.train_op, self.loss, self.rse, self.global_step]
-                _, loss, rse, step = self.sess.run(output_feed, feed_dict)
-                if step % 100 == 0:
-                    print("epoch :%d, step: %d, rse: %.4f loss : %.4f" % (epoch, step, rse, loss))
