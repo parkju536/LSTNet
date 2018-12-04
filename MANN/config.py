@@ -1,8 +1,9 @@
 class Config(object):
     def __init__(self):
         # model params
-        self.model = "LSTNet"
-        self.nsteps = 10        # equivalent to x_len
+        self.model = "MANN"
+        self.nsteps = 10
+        self.msteps = self.nsteps * 3  # multiplication of nsteps
         self.attention_size = 128
         self.num_filters = 128
         self.kernel_sizes = [3, 4, 5]
@@ -13,7 +14,7 @@ class Config(object):
         # data params
         self.data_path = '../data/28339_11_2mins.csv'
         self.nfeatures = 8
-        self.x_len = self.nsteps
+        self.x_len = self.nsteps + self.msteps
         self.y_len = 1
         self.foresight = 0
         self.dev_ratio = 0.1

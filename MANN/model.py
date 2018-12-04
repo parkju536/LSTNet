@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tensorflow.contrib import layers
+import os
 
 
 class Model(object):
@@ -13,6 +14,18 @@ class Model(object):
 
     def _build_model(self):
         self.add_placeholder()
+        # make memories
+        with tf.variable_scope("memories"):
+            memories = tf.concat(tf.split(self.memories, self.config.msteps, axis=1))
+            conv_memories = self.conv1d(memories, self.config.kernel_sizes,
+                                        self.config.num_filters,
+                                        scope="long_term")
+            gru_memories = self.gru(conv_memories, scope="long_gru")
+            context_memories = self.temporal_attention(gru_memories)
+            linear_memories = tf.concat([context_memories, gru_memories[:, -1, :]], axis=1)
+            # [b, m, d]
+            linear_memories = tf.reshape(linear_memories, [[-1, self.config.msteps, self.config.num_filters * 2]])
+
         # short term memory
         with tf.variable_scope("short_term"):
             conv = self.conv1d(self.input_x, self.config.kernel_sizes,
@@ -22,35 +35,34 @@ class Model(object):
             context = self.temporal_attention(gru_outputs)  # [b, d]
             last_hidden_states = gru_outputs[:, -1, :]  # [b, d]
             linear_inputs = tf.concat([context, last_hidden_states], axis=1)
-
+        weighted_values = self.get_memory_values(linear_inputs, linear_memories)
+        linear_inputs = tf.concat([linear_inputs, weighted_values], axis=1)
         # prediction and loss
         predictions = tf.layers.dense(linear_inputs, self.config.nfeatures,
                                       activation=tf.nn.tanh, use_bias=True,
                                       kernel_regularizer=self.regularizer,
                                       kernel_initializer=layers.xavier_initializer())
         # get auto-regression and add it to prediction from NN
-        ar, ar_loss = self.auto_regressive(self.input_x, self.config.ar_lambda)
+        ar, l2_loss = self.auto_regressive(self.input_x, self.config.ar_lambda)
         self.predictions = predictions + ar
         self.loss = tf.losses.mean_squared_error(labels=self.targets, predictions=self.predictions)
-
+        self.loss += l2_loss
         error = tf.reduce_sum((self.targets - self.predictions) ** 2) ** 0.5
         denom = tf.reduce_sum((self.targets - tf.reduce_mean(self.targets)) ** 2) ** 0.5
         self.rse = error / denom
-        self.mae = tf.reduce_mean(tf.abs(self.targets - self.predictions))
-        self.mape = tf.reduce_mean(tf.abs(self.targets - self.predictions) / self.targets)
-
         if self.config.l2_lambda > 0:
             reg_vars = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             reg_term = layers.apply_regularization(self.regularizer, reg_vars)
             self.loss += reg_term
-        self.loss += ar_loss
-
         self.add_train_op()
         self.initialize_session()
 
     def add_placeholder(self):
         self.input_x = tf.placeholder(shape=[None, self.config.nsteps, self.config.nfeatures], dtype=tf.float32,
                                       name="x")
+        self.memories = tf.placeholder(shape=[None, self.config.nsteps * self.config.msteps,
+                                              self.config.nfeatures], dtype=tf.float32,
+                                       name="memories")
         self.targets = tf.placeholder(shape=[None, self.config.nfeatures], dtype=tf.float32, name="targets")
         self.dropout = tf.placeholder(dtype=tf.float32, name="dropout")
 
@@ -120,8 +132,19 @@ class Model(object):
                                name="bias")
         w_ = tf.expand_dims(w, axis=0)
         weighted = tf.reduce_sum(inputs * w_, axis=1) + bias
-        ar_loss = ar_lambda * tf.reduce_sum(tf.square(w))
-        return weighted, ar_loss
+        l2_loss = ar_lambda * tf.reduce_sum(tf.square(w))
+        return weighted, l2_loss
+
+    def get_memory_values(self, query, memories):
+        # query : [b, d]
+        # memories : [b, m, d]
+        query = tf.expand_dims(query, axis=1)
+        # dot product [b, 1, d] dot [b, m, d] -> [b,1,m]
+        weight = tf.matmul(query, tf.transpose(memories, [0, 2, 1]))
+        weight = tf.nn.softmax(weight)
+        weighted_values = tf.matmul(weight, memories)
+
+        return weighted_values
 
     def add_train_op(self):
         opt = tf.train.AdamOptimizer(self.config.lr)
@@ -132,6 +155,7 @@ class Model(object):
 
     def initialize_session(self):
         """Defines self.sess and initialize the variables"""
+        print("Initializing tf session")
         config = tf.ConfigProto(allow_soft_placement=True)
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = 0.9
@@ -151,9 +175,13 @@ class Model(object):
         """
         self.saver.restore(self.sess, tf.train.latest_checkpoint(dir_model))
 
-    def train(self, input_x, targets):
+    def train(self, batch_x, targets):
+        # split numpy array input_x to input_x, memories
+        input_x = batch_x[self.config.msteps:]
+        memories = batch_x[:self.config.msteps]
         feed_dict = {
             self.input_x: input_x,
+            self.memories: memories,
             self.targets: targets,
             self.dropout: self.config.dropout
         }
@@ -161,9 +189,13 @@ class Model(object):
         _, loss, res, mape, mae, step = self.sess.run(output_feed, feed_dict)
         return loss, res, mape, mae, step
 
-    def eval(self, input_x, targets):
+    def eval(self, batch_x, targets):
+        # split numpy array input_x to input_x, memories
+        input_x = batch_x[self.config.msteps:]
+        memories = batch_x[:self.config.msteps]
         feed_dict = {
             self.input_x: input_x,
+            self.memories: memories,
             self.targets: targets,
             self.dropout: 1.0
         }
