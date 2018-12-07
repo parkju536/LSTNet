@@ -1,6 +1,10 @@
 import random
+import logging
 
 COL_LIST = None
+
+
+logger = logging.getLogger()
 
 
 def load_data_from_csv(
@@ -12,7 +16,6 @@ def load_data_from_csv(
         foresight = 1,
         dev_ratio = 0.1,
         test_ratio = 0.1,
-        logger = None,
         seed = None,
 ):
     train_x = 0

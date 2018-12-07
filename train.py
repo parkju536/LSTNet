@@ -39,7 +39,10 @@ def main():
                                                                             dev_ratio=config.dev_ratio,
                                                                             test_ratio=config.test_ratio,
                                                                             seed=config.seed)
-
+        logger.info("train_x shape: {}, dev_x shape: {}, test_x shape: {}"
+                    .format(train_x.shape, dev_x.shape, test_x.shape))
+        logger.info("train_y shape: {}, dev_y shape: {}, test_y shape: {}"
+                    .format(train_y.shape, dev_y.shape, test_y.shape))
         model = Model(config)
         train_data = zip(train_x, train_y)
         no_improv = 0

@@ -9,16 +9,16 @@ def get_logger(log_path='logs/'):
         :param log_path
         :return: logger instance
         """
-        logger = logging.getLogger('logger')
+        logger = logging.getLogger(__name__)
 
         date_format = '%Y-%m-%d %H:%M:%S'
         formatter = logging.Formatter('[%(levelname)s|%(filename)s:%(lineno)s] %(asctime)s %(message)s', date_format)
         i = 0
         today = datetime.datetime.now()
-        name = 'log-'+today.strftime('%Y%m%d')+'-'+'02%d'%i+'.log'
+        name = 'log-'+today.strftime('%Y%m%d')+'-'+'%02d'%i+'.log'
         while os.path.exists(log_path+name):
                 i += 1
-        name = 'log-'+today.strftime('%Y%m%d')+'-'+'02%d'%i+'.log'
+                name = 'log-'+today.strftime('%Y%m%d')+'-'+'%02d'%i+'.log'
 
         fileHandler = logging.FileHandler(os.path.join(log_path+name))
         streamHandler = logging.StreamHandler()
@@ -43,10 +43,10 @@ def make_date_dir(path):
             os.mkdir(path)
         i = 0
         today = datetime.datetime.now()
-        name = today.strftime('%Y%m%d') + '-' + '02%d' % i
+        name = today.strftime('%Y%m%d') + '-' + '%02d' % i
         while os.path.exists(os.path.join(path + name)):
             i += 1
-        name = today.strftime('%Y%m%d') + '-' + '02%d' % i
+        name = today.strftime('%Y%m%d') + '-' + '%02d' % i
         os.mkdir(os.path.join(path + name))
         return os.path.join(path + name)
 

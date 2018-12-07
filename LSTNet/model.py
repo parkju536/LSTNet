@@ -37,7 +37,7 @@ class Model(object):
         denom = tf.reduce_sum((self.targets - tf.reduce_mean(self.targets)) ** 2) ** 0.5
         self.rse = error / denom
         self.mae = tf.reduce_mean(tf.abs(self.targets - self.predictions))
-        self.mape = tf.reduce_mean(tf.abs(self.targets - self.predictions) / self.targets)
+        self.mape = tf.reduce_mean(tf.abs((self.targets - self.predictions) / self.targets))
 
         if self.config.l2_lambda > 0:
             reg_vars = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)

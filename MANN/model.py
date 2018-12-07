@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow.contrib import layers
-import os
 
 
 class Model(object):
@@ -43,17 +42,22 @@ class Model(object):
                                       kernel_regularizer=self.regularizer,
                                       kernel_initializer=layers.xavier_initializer())
         # get auto-regression and add it to prediction from NN
-        ar, l2_loss = self.auto_regressive(self.input_x, self.config.ar_lambda)
+        ar, ar_loss = self.auto_regressive(self.input_x, self.config.ar_lambda)
         self.predictions = predictions + ar
         self.loss = tf.losses.mean_squared_error(labels=self.targets, predictions=self.predictions)
-        self.loss += l2_loss
+
         error = tf.reduce_sum((self.targets - self.predictions) ** 2) ** 0.5
         denom = tf.reduce_sum((self.targets - tf.reduce_mean(self.targets)) ** 2) ** 0.5
         self.rse = error / denom
+        self.mae = tf.reduce_mean(tf.abs(self.targets - self.predictions))
+        self.mape = tf.reduce_mean(tf.abs((self.targets - self.predictions) / self.targets))
+
         if self.config.l2_lambda > 0:
             reg_vars = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             reg_term = layers.apply_regularization(self.regularizer, reg_vars)
             self.loss += reg_term
+        self.loss += ar_loss
+
         self.add_train_op()
         self.initialize_session()
 
@@ -132,8 +136,8 @@ class Model(object):
                                name="bias")
         w_ = tf.expand_dims(w, axis=0)
         weighted = tf.reduce_sum(inputs * w_, axis=1) + bias
-        l2_loss = ar_lambda * tf.reduce_sum(tf.square(w))
-        return weighted, l2_loss
+        ar_loss = ar_lambda * tf.reduce_sum(tf.square(w))
+        return weighted, ar_loss
 
     def get_memory_values(self, query, memories):
         # query : [b, d]
