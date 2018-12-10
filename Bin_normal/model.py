@@ -24,26 +24,20 @@ class Model(object):
             linear_inputs = tf.concat([context, last_hidden_states], axis=1)
 
         # prediction and loss
-        predictions = tf.layers.dense(linear_inputs, self.config.nfeatures,
-                                      activation=tf.nn.tanh, use_bias=True,
-                                      kernel_regularizer=self.regularizer,
-                                      kernel_initializer=layers.xavier_initializer())
+        logits = tf.layers.dense(linear_inputs, self.config.nbins,
+                                  activation=None, use_bias=True,
+                                  kernel_regularizer=self.regularizer,
+                                  kernel_initializer=layers.xavier_initializer())
         # get auto-regression and add it to prediction from NN
-        ar, ar_loss = self.auto_regressive(self.input_x, self.config.ar_lambda)
-        self.predictions = predictions + ar
-        self.loss = tf.losses.mean_squared_error(labels=self.targets, predictions=self.predictions)
+        self.predictions = tf.argmax(logits, axis=-1, output_type=tf.int32)
+        self.loss = tf.losses.sparse_softmax_cross_entropy(labels=self.targets, logits=logits)
 
-        error = tf.reduce_sum((self.targets - self.predictions) ** 2) ** 0.5
-        denom = tf.reduce_sum((self.targets - tf.reduce_mean(self.targets)) ** 2) ** 0.5
-        self.rse = error / denom
-        self.mae = tf.reduce_mean(tf.abs(self.targets - self.predictions))
-        self.mape = tf.reduce_mean(tf.abs((self.targets - self.predictions) / self.targets))
+        self.acc = tf.reduce_mean(tf.cast(tf.equal(self.predictions, self.targets), dtype=tf.float32))
 
         if self.config.l2_lambda > 0:
             reg_vars = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             reg_term = layers.apply_regularization(self.regularizer, reg_vars)
             self.loss += reg_term
-        self.loss += ar_loss
 
         self.add_train_op()
         self.initialize_session()
@@ -51,7 +45,7 @@ class Model(object):
     def add_placeholder(self):
         self.input_x = tf.placeholder(shape=[None, self.config.nsteps, self.config.nfeatures], dtype=tf.float32,
                                       name="x")
-        self.targets = tf.placeholder(shape=[None, self.config.nfeatures], dtype=tf.float32, name="targets")
+        self.targets = tf.placeholder(shape=[None], dtype=tf.int32, name="targets")
         self.dropout = tf.placeholder(dtype=tf.float32, name="dropout")
 
     def conv1d(self, inputs, kernel_sizes, num_filters, scope, reuse=False):
@@ -110,19 +104,6 @@ class Model(object):
         context = tf.squeeze(context, axis=-1)
         return context
 
-    def auto_regressive(self, inputs, ar_lambda):
-        # y_t,d = sum_i (w_i * y_i,d) + b_d
-        w = tf.get_variable(shape=[self.config.nsteps, self.config.nfeatures],
-                            initializer=layers.xavier_initializer(),
-                            name="w")
-        bias = tf.get_variable(shape=[self.config.nfeatures],
-                               initializer=tf.zeros_initializer(),
-                               name="bias")
-        w_ = tf.expand_dims(w, axis=0)
-        weighted = tf.reduce_sum(inputs * w_, axis=1) + bias
-        ar_loss = ar_lambda * tf.reduce_sum(tf.square(w))
-        return weighted, ar_loss
-
     def add_train_op(self):
         opt = tf.train.AdamOptimizer(self.config.lr)
         vars = tf.trainable_variables()
@@ -132,12 +113,9 @@ class Model(object):
 
     def initialize_session(self):
         """Defines self.sess and initialize the variables"""
-        if not self.config.allow_gpu:
-            config = tf.ConfigProto(device_count={'GPU': 0})
-        else:
-            config = tf.ConfigProto(allow_soft_placement=True)
-            config.gpu_options.allow_growth = True
-            config.gpu_options.per_process_gpu_memory_fraction = 0.9
+        config = tf.ConfigProto(allow_soft_placement=True)
+        config.gpu_options.allow_growth = True
+        config.gpu_options.per_process_gpu_memory_fraction = 0.9
         self.sess = tf.Session(config=config)
         self.sess.run(tf.global_variables_initializer())
         self.saver = tf.train.Saver()
@@ -160,9 +138,9 @@ class Model(object):
             self.targets: targets,
             self.dropout: self.config.dropout
         }
-        output_feed = [self.train_op, self.loss, self.rse, self.mape, self.mae, self.global_step]
-        _, loss, res, mape, mae, step = self.sess.run(output_feed, feed_dict)
-        return loss, res, mape, mae, step
+        output_feed = [self.train_op, self.loss, self.acc, self.global_step]
+        _, loss, acc, step = self.sess.run(output_feed, feed_dict)
+        return loss, acc, step
 
     def eval(self, input_x, targets):
         feed_dict = {
@@ -170,6 +148,6 @@ class Model(object):
             self.targets: targets,
             self.dropout: 1.0
         }
-        output_feed = [self.predictions, self.loss, self.rse, self.mape, self.mae]
-        pred, loss, res, mape, mae = self.sess.run(output_feed, feed_dict)
-        return pred, loss, res, mape, mae
+        output_feed = [self.predictions, self.loss, self.acc]
+        pred, loss, acc = self.sess.run(output_feed, feed_dict)
+        return pred, loss, acc

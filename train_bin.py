@@ -9,17 +9,17 @@ from time import time
 def main():
     parser = argparse.ArgumentParser()
 
-    # Required parameters
-    parser.add_argument("-m", "--model", type=str, default="LSTNet",
-                        required=True, choices=["LSTNet", "MANN"],
-                        help="Model selected in the list: LSTNet, MANN")
+    #Required parameters
+    parser.add_argument("-m", "--model", type=str, default="Bin_normal",
+                        required=True, choices=["Bin_normal", "Bin-uniform"],
+                        help="Model selected in the list: Bin_normal, Bin-uniform")
 
-    # Optional parameters
+    #Optional parameters
 
     args = parser.parse_args()
-    if args.model == "LSTNet":
-        from LSTNet.config import Config
-        from LSTNet.model import Model
+    if args.model == "Bin_normal":
+        from Bin_normal.config import Config
+        from Bin_normal.model import Model
         config = Config()
 
     else:
@@ -58,19 +58,19 @@ def main():
 
             for batch in train_batches:
                 batch_x, batch_y = zip(*batch)
-                loss, rse, mape, mae, step = model.train(batch_x, batch_y)
+                loss, acc, step = model.train(batch_x, batch_y)
 
                 if step % 100 == 0:
-                    logger.info("epoch: %d, step: %d, loss: %4f, rse: %4f, mape: %4f, mae: %4f" %
-                                (epoch, step, loss, rse, mape, mae))
+                    logger.info("epoch: %d, step: %d, loss: %4f, acc: %4f" %
+                                (epoch, step, loss, acc))
 
             # dev score for each epoch (no mini batch)
-            _, dev_loss, dev_rse, dev_mape, dev_mae = model.eval(dev_x, dev_y)
+            _, dev_loss, dev_acc = model.eval(dev_x, dev_y)
 
             if dev_loss < best_loss:
                 best_loss = dev_loss
-                logger.info("New score! : dev_loss: %4f, dev_rse: %4f, dev_mape: %4f, dev_mae: %4f" %
-                            (dev_loss, dev_rse, dev_mape, dev_mae))
+                logger.info("New score! : dev_loss: %4f, dev_acc: %4f" %
+                            (dev_loss, dev_acc))
                 logger.info("Saving model at {}".format(model_dir))
                 model.save_session(os.path.join(model_dir, config.model))
             else:
@@ -82,9 +82,9 @@ def main():
         elapsed = time()-start_time
         # generating results (no mini batch)
         model.restore_session(model_dir)
-        pred, test_loss, test_rse, test_mape, test_mae = model.eval(test_x, test_y)
-        logger.info("test_loss: %4f, test_rse: %4f, test_mape: %4f, test_mae: %4f" %
-                    (test_loss, test_rse, test_mape, test_mae))
+        pred, test_loss, test_acc = model.eval(test_x, test_y)
+        logger.info("test_loss: %4f, test_acc: %4f" %
+                    (test_loss, test_acc, ))
 
         # save results
         np.save(os.path.join(result_dir, 'pred.npy'), pred)

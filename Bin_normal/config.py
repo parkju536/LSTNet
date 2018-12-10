@@ -1,8 +1,9 @@
 class Config(object):
     def __init__(self):
         # model params
-        self.model = "LSTNet"
+        self.model = "Bin_normal"
         self.nsteps = 10        # equivalent to x_len
+        self.nbins = 4
         self.attention_size = 128
         self.num_filters = 128
         self.kernel_sizes = [3, 4, 5]
@@ -28,7 +29,6 @@ class Config(object):
         self.nepoch_no_improv = 5
         self.clip = 5
         self.desc = self._desc()
-        self.allow_gpu = True
 
     def _desc(self):
         desc = ""
