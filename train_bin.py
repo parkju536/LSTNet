@@ -69,6 +69,7 @@ def main():
 
             if dev_loss < best_loss:
                 best_loss = dev_loss
+                no_improv = 0
                 logger.info("New score! : dev_loss: %4f, dev_acc: %4f" %
                             (dev_loss, dev_acc))
                 logger.info("Saving model at {}".format(model_dir))
