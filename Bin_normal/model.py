@@ -23,14 +23,17 @@ class Model(object):
             last_hidden_states = gru_outputs[:, -1, :]  # [b, d]
             linear_inputs = tf.concat([context, last_hidden_states], axis=1)
 
-        # prediction and loss
+        # linear_inputs [b, 2d] -> [b, nfeatures, -1]
+        linear_inputs = tf.stack(tf.split(linear_inputs, self.config.nfeatures, axis=1), axis=1)
+        # logits [b, nfeatures, -1] -> [b, nfeatures, nbins]
         logits = tf.layers.dense(linear_inputs, self.config.nbins,
                                   activation=None, use_bias=True,
                                   kernel_regularizer=self.regularizer,
                                   kernel_initializer=layers.xavier_initializer())
-        # get auto-regression and add it to prediction from NN
+        # get predictions
         self.predictions = tf.argmax(logits, axis=-1, output_type=tf.int32)
-        self.loss = tf.losses.sparse_softmax_cross_entropy(labels=self.targets, logits=logits)
+        weights = tf.ones(tf.shape(self.targets))
+        self.loss = tf.contrib.seq2seq.sequence_loss(labels=self.targets, logits=logits, weights=weights)
 
         self.acc = tf.reduce_mean(tf.cast(tf.equal(self.predictions, self.targets), dtype=tf.float32))
 
@@ -45,7 +48,7 @@ class Model(object):
     def add_placeholder(self):
         self.input_x = tf.placeholder(shape=[None, self.config.nsteps, self.config.nfeatures], dtype=tf.float32,
                                       name="x")
-        self.targets = tf.placeholder(shape=[None], dtype=tf.int32, name="targets")
+        self.targets = tf.placeholder(shape=[None, self.config.nfeatures], dtype=tf.int32, name="targets")
         self.dropout = tf.placeholder(dtype=tf.float32, name="dropout")
 
     def conv1d(self, inputs, kernel_sizes, num_filters, scope, reuse=False):

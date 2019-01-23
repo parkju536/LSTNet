@@ -45,7 +45,7 @@ def main():
         logger.info("train_y shape: {}, dev_y shape: {}, test_y shape: {}"
                     .format(train_y.shape, dev_y.shape, test_y.shape))
         model = Model(config)
-        train_data = zip(train_x, train_y)
+        train_data = list(zip(train_x, train_y))
         no_improv = 0
         best_loss = 100
         model_dir = make_date_dir(os.path.join(config.model, 'model_save/'))
@@ -91,7 +91,7 @@ def main():
         np.save(os.path.join(result_dir, 'pred.npy'), pred)
         np.save(os.path.join(result_dir, 'test_y.npy'), test_y)
         logger.info("Saving results at {}".format(result_dir))
-        logger.info("Elapsed training time {%4f}".format(elapsed))
+        logger.info("Elapsed training time {0:0.4f}".format(elapsed))
         logger.info("Training finished, exit program")
 
     except:
