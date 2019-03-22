@@ -1,7 +1,7 @@
 class Config(object):
     def __init__(self):
         # model params
-        self.model = "Bin_3d"
+        self.model = "AR"
         self.nsteps = 10        # equivalent to x_len
         self.msteps = 7
         self.nbins = 4

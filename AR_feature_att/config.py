@@ -1,15 +1,18 @@
 class Config(object):
     def __init__(self):
         # model params
-        self.model = "Bin_3d"
+        self.model = "AR"
         self.nsteps = 10        # equivalent to x_len
         self.msteps = 7
         self.nbins = 4
-        self.attention_size = 64
+        self.attention_size = 16
         self.num_filters = 32
         self.kernel_sizes = [3]
         self.l2_lambda = 1e-3
-        
+
+        self.hidden_units = 512
+        self.num_heads = 8
+
         # data params
         self.data_path = '../data/18579_12_2mins.csv'
         self.nfeatures = 8

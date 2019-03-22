@@ -61,8 +61,7 @@ def main():
                 loss, rse, mape, mae, step = model.train(batch_x, batch_y)
 
                 if step % 100 == 0:
-                    logger.info("epoch: %d, step: %d, loss: %4f, rse: %4f, mape: %4f, mae: %4f" %
-                                (epoch, step, loss, rse, mape, mae))
+                    logger.info("epoch: {ep}, step: {st}, loss: {lo:.4f}, rse: {rs:.4f}, mape: {map:.4f}, mae: {ma:.4f}".format(ep=epoch, st=step, lo=loss, rs=rse, map=mape, ma=mae))
 
             # dev score for each epoch (no mini batch)
             _, dev_loss, dev_rse, dev_mape, dev_mae = model.eval(dev_x, dev_y)
@@ -70,8 +69,7 @@ def main():
             if dev_loss < best_loss:
                 best_loss = dev_loss
                 no_improv = 0
-                logger.info("New score! : dev_loss: %4f, dev_rse: %4f, dev_mape: %4f, dev_mae: %4f" %
-                            (dev_loss, dev_rse, dev_mape, dev_mae))
+                logger.info("New score! : dev_loss: {lo:.4f}, dev_rse: {rs:.4f}, dev_mape: {map:.4f}, dev_mae: {ma:.4f}".format(lo=dev_loss, rs=dev_rse, map=dev_mape, ma=dev_mae)
                 logger.info("Saving model at {}".format(model_dir))
                 model.save_session(os.path.join(model_dir, config.model))
             else:
@@ -84,8 +82,7 @@ def main():
         # generating results (no mini batch)
         model.restore_session(model_dir)
         pred, test_loss, test_rse, test_mape, test_mae = model.eval(test_x, test_y)
-        logger.info("test_loss: %4f, test_rse: %4f, test_mape: %4f, test_mae: %4f" %
-                    (test_loss, test_rse, test_mape, test_mae))
+        logger.info("test_loss: {lo:.4f}, test_rse: {rs:.4f}, test_mape: {map:.4f}, test_mae: {ma:.4f}".format(lo=test_loss, rs=test_rse, map=test_mape, ma=test_mae))
 
         # save results
         np.save(os.path.join(result_dir, 'pred.npy'), pred)

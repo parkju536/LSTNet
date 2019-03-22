@@ -1,30 +1,29 @@
 class Config(object):
     def __init__(self):
         # model params
-        self.model = "Bin_3d"
-        self.nsteps = 10        # equivalent to x_len
-        self.msteps = 7
-        self.nbins = 4
-        self.attention_size = 64
-        self.num_filters = 32
-        self.kernel_sizes = [3]
+        self.model = "AR_mem"
+        self.nsteps = 3        # equivalent to x_len
+        self.msteps = 5
+        self.attention_size = 32
         self.l2_lambda = 1e-3
-        
+        self.ar_lambda = 1e-1
+        self.ar_g = 1
+
         # data params
-        self.data_path = '../data/18579_12_2mins.csv'
-        self.nfeatures = 8
+        self.data_path = './data/MS_scaled_data.csv'
+        self.nfeatures = 6
         self.x_len = self.nsteps
         self.y_len = 1
-        self.mem_len = self.msteps
         self.foresight = 0
         self.dev_ratio = 0.1
-        self.test_len = 7
+        self.test_len = 1236
+        self.mem_len = self.msteps
         self.seed = None
 
         # train params
         self.lr = 1e-3
-        self.num_epochs = 200
-        self.batch_size = 32
+        self.num_epochs = 70
+        self.batch_size = 16
         self.dropout = 0.9
         self.nepoch_no_improv = 5
         self.clip = 5

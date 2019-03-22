@@ -11,21 +11,27 @@ def main():
 
     #Required parameters
     parser.add_argument("-m", "--model", type=str, default="Bin_normal",
-                        required=True, choices=["Bin_normal", "Bin-uniform"],
-                        help="Model selected in the list: Bin_normal, Bin-uniform")
-
+                        required=True, choices=["Bin_normal", "Bin-uniform", "Bin_3d"],
+                        help="Model selected in the list: Bin_normal, Bin-uniform,Bin_3d")
     #Optional parameters
 
+    args = parser.parse_args()
     args = parser.parse_args()
     if args.model == "Bin_normal":
         from Bin_normal.config import Config
         from Bin_normal.model import Model
         config = Config()
 
+    elif args.model == "Bin_3d":
+        from Bin_3d.config import Config
+        from Bin_3d.model import Model
+        config = Config()
+
     else:
         from MANN.config import Config
         from MANN.model import Model
         config = Config()
+
 
     logger = get_logger(os.path.join(config.model, "logs/"))
     logger.info("=======Model Configuration======")
@@ -38,7 +44,7 @@ def main():
                                                                             y_len=config.y_len,
                                                                             foresight=config.foresight,
                                                                             dev_ratio=config.dev_ratio,
-                                                                            test_ratio=config.test_ratio,
+                                                                            #test_ratio=config.test_ratio,
                                                                             seed=config.seed)
         logger.info("train_x shape: {}, dev_x shape: {}, test_x shape: {}"
                     .format(train_x.shape, dev_x.shape, test_x.shape))
